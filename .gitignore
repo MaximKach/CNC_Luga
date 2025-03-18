@@ -1,0 +1,6 @@
+# Скрываем конфиги и базы данных
+config.py
+.env
+users.txt
+reports.txt
+*.log  # Логи
