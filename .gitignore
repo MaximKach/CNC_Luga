@@ -4,3 +4,4 @@ config.py
 users.txt
 reports.txt
 *.log  # Логи
+__pycache__/
