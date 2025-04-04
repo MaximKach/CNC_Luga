@@ -1,6 +1,15 @@
 import logging
 import requests
-from config import YANDEX_API_KEY, FOLDER_ID
+import os  # Добавляем модуль os
+
+# Получаем ключи из переменных окружения
+YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
+FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
+
+# Проверяем, что ключи загружены
+if not YANDEX_API_KEY or not FOLDER_ID:
+    logging.error("❌ Ошибка: Не удалось загрузить YANDEX_API_KEY или YANDEX_FOLDER_ID из переменных окружения")
+    raise ValueError("❌ Ошибка: Не удалось загрузить YANDEX_API_KEY или YANDEX_FOLDER_ID из переменных окружения")
 
 # Отправляем запрос к YandexGPT и получаем ответ
 def yandex_gpt_request(prompt):
