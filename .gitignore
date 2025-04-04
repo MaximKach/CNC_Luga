@@ -1,0 +1,8 @@
+# Скрываем конфиги и базы данных
+config.py
+.env
+users.txt
+reports.txt
+news.txt
+*.log  # Логи
+__pycache__/
