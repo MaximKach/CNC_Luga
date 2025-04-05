@@ -1,4 +1,5 @@
 import logging
+import os  # Добавляем импорт модуля os
 
 REPORTS_FILE = "reports.txt"
 
