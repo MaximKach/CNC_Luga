@@ -1,1 +1,1 @@
-worker: python cnc_luga_bot.py
+web: gunicorn --bind 0.0.0.0:8000 cnc_luga_bot:app
