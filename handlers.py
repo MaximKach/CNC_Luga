@@ -1,172 +1,471 @@
 import logging
-from telebot import types
-from gpt_api import yandex_gpt_request
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import ContextTypes
+from gpt_api import yandex_gpt_request, yandex_gpt_request_async
 from news import get_news, update_news
 from reports import save_report
+from users import save_user
 
-def register_handlers(bot):
-    # Словарь для хранения истории диалогов пользователей
-    user_contexts = {}
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-    # Создаём главное меню с кнопками
-    def main_menu():
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        # Обновляем кнопки меню, убираем "Антон" и оставляем только "Валера"
-        markup.add(types.KeyboardButton("📸 Валера"))
-        markup.add(types.KeyboardButton("⚖ Юрист"), types.KeyboardButton("🔴 Аноним"))
-        return markup
+# Константы для состояний пользователя
+USER_STATE_NONE = "none"
+USER_STATE_VALERA = "valera"
+USER_STATE_LEGAL = "legal"
+USER_STATE_REPORT = "report"
+USER_STATE_UPDATE_NEWS = "update_news"
+USER_STATE_BROADCAST = "broadcast"
 
-    # Обработчик команды /start
-    @bot.message_handler(commands=['start'])
-    def send_welcome(message):
-        from users import save_user
-        save_user(message.chat.id)
-        WELCOME_MESSAGE = (
-            "Добро пожаловать в CNC Luga!\n\n"
-            "Этот бот — ваш помощник в мире ЧПУ. Мы не только помогаем писать G-код по фото деталей и отвечаем на технические вопросы с помощью ИИ, "
-            "но и стоим на страже ваших прав.\n\n"
-            "Тут вы найдёте:\n"
-            "🔧 *Техническая помощь*:\n"
-            "  - /valera — Введите название инструмента или вопрос по ЧПУ, и Валера подберёт режимы резания и поможет с программированием.\n\n"
-            "⚖ *Юридическая поддержка*:\n"
-            "  - /legal — Юридическая помощь по вопросам больничных, отпусков и переработок.\n"
-            "  - /report — Анонимно сообщите о проблемах на работе.\n\n"
-            "📰 *Сообщество и новости*:\n"
-            "  - /news — Новости и обновления из мира ЧПУ.\n"
-            "  - /contact — Контакты для связи с администрацией.\n\n"
-            "Мы здесь, чтобы сделать вашу работу проще, а жизнь — лучше. Вместе мы сильнее!"
+# Словарь для хранения истории диалогов пользователей
+user_contexts = {}
+
+# Создаём главное меню с кнопками
+def main_menu():
+    keyboard = [
+        ["📸 Валера"],
+        ["⚖ Юрист", "🔴 Аноним"],
+        ["📋 Меню"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+# Создаём меню команд
+def commands_menu():
+    keyboard = [
+        ["/start", "/help"],
+        ["/news", "/contact"],
+        ["↩️ Назад"]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+# Обработчик команды /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    save_user(update.effective_chat.id)
+    # Сбрасываем контекст пользователя при старте
+    user_contexts[update.effective_chat.id] = {"role": USER_STATE_NONE, "history": []}
+    logger.info(f"Пользователь {update.effective_chat.id} запустил бота")
+    
+    WELCOME_MESSAGE = (
+        "Добро пожаловать в CNC Luga!\n\n"
+        "Этот бот — ваш помощник в мире ЧПУ. Мы не только помогаем писать G-код по фото деталей и отвечаем на технические вопросы с помощью ИИ, "
+        "но и стоим на страже ваших прав.\n\n"
+        "Тут вы найдёте:\n"
+        "🔧 *Техническая помощь*:\n"
+        "  - /valera — Введите название инструмента или вопрос по ЧПУ, и Валера подберёт режимы резания и поможет с программированием.\n\n"
+        "⚖ *Юридическая поддержка*:\n"
+        "  - /legal — Юридическая помощь по вопросам больничных, отпусков и переработок.\n"
+        "  - /report — Анонимно сообщите о проблемах на работе.\n\n"
+        "📰 *Сообщество и новости*:\n"
+        "  - /news — Новости и обновления из мира ЧПУ.\n"
+        "  - /contact — Контакты для связи с администрацией.\n\n"
+        "Мы здесь, чтобы сделать вашу работу проще, а жизнь — лучше. Вместе мы сильнее!"
+    )
+    await update.message.reply_text(WELCOME_MESSAGE, parse_mode='Markdown', reply_markup=main_menu())
+
+# Обработчик команды /help
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    HELP_MESSAGE = (
+        "🤖 *CNC Luga Bot - Помощник в мире ЧПУ*\n\n"
+        "*Доступные команды:*\n"
+        "/start - Запустить бота и показать главное меню\n"
+        "/help - Показать эту справку\n"
+        "/valera - Начать диалог с Валерой (техническая помощь)\n"
+        "/legal - Начать диалог с Юристом (юридическая помощь)\n"
+        "/report - Отправить анонимное сообщение\n"
+        "/news - Показать новости\n"
+        "/contact - Контакты для связи\n\n"
+        "*Как пользоваться ботом:*\n"
+        "1. Выберите нужную функцию из меню\n"
+        "2. Следуйте инструкциям бота\n"
+        "3. В любой момент вы можете вернуться в главное меню, нажав кнопку '📋 Меню'"
+    )
+    await update.message.reply_text(HELP_MESSAGE, parse_mode='Markdown', reply_markup=main_menu())
+
+# Обработчик кнопки "📋 Меню"
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Выберите команду:", reply_markup=commands_menu())
+
+# Обработчик кнопки "↩️ Назад"
+async def back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Главное меню:", reply_markup=main_menu())
+
+# Обработчик кнопок меню
+async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    text = update.message.text
+    logger.info(f"Пользователь {chat_id} нажал кнопку: {text}")
+    
+    # Сбрасываем контекст пользователя при выборе нового персонажа
+    if text == "📸 Валера":
+        user_contexts[chat_id] = {"role": USER_STATE_VALERA, "history": []}
+        await valera_start(update, context)
+    elif text == "⚖ Юрист":
+        user_contexts[chat_id] = {"role": USER_STATE_LEGAL, "history": []}
+        await legal_start(update, context)
+    elif text == "🔴 Аноним":
+        user_contexts[chat_id] = {"role": USER_STATE_REPORT, "history": []}
+        await report_start(update, context)
+
+# 📸 Валера — начало диалога
+async def valera_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Пользователь {chat_id} запустил диалог с Валерой")
+    
+    # Сбрасываем контекст пользователя
+    user_contexts[chat_id] = {"role": USER_STATE_VALERA, "history": []}
+    await update.message.reply_text(
+        "Введите название инструмента, вопрос по ЧПУ или отправьте фото чертежа для помощи с программированием:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+# Логика общения с Валерой
+async def valera_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    
+    # Проверяем, что пользователь находится в контексте Валеры
+    if chat_id not in user_contexts or user_contexts[chat_id]["role"] != USER_STATE_VALERA:
+        logger.warning(f"Пользователь {chat_id} пытается общаться с Валерой, но находится в другом контексте")
+        await update.message.reply_text(
+            "Вы не находитесь в диалоге с Валерой. Используйте команду /valera или кнопку меню.",
+            reply_markup=main_menu()
         )
-        bot.send_message(message.chat.id, WELCOME_MESSAGE, parse_mode='Markdown', reply_markup=main_menu())
-
-    # Обработчик кнопок меню
-    @bot.message_handler(func=lambda message: message.text in ["📸 Валера", "⚖ Юрист", "🔴 Аноним"])
-    def handle_menu_buttons(message):
-        if message.text == "📸 Валера":
-            valera_start(message)
-        elif message.text == "⚖ Юрист":
-            legal_start(message)
-        elif message.text == "🔴 Аноним":
-            report_start(message)
-
-    # 📸 Валера — начало диалога (объединенная функциональность Антона и Валеры)
-    @bot.message_handler(commands=['valera'])
-    def valera_start(message):
-        user_contexts[message.chat.id] = {"role": "valera", "history": []}
-        bot.send_message(message.chat.id, "Введите название инструмента, вопрос по ЧПУ или отправьте фото чертежа для помощи с программированием:", reply_markup=types.ReplyKeyboardRemove())
-        bot.register_next_step_handler(message, valera_ai)
-
-    # Логика общения с Валерой (объединенная функциональность Антона и Валеры)
-    def valera_ai(message):
-        if message.text.startswith('/'):
-            bot.send_message(message.chat.id, "Вы выбрали другую команду. Диалог с Валерой завершен.", reply_markup=main_menu())
-            return
+        return
         
-        chat_id = message.chat.id
-        user_question = message.text.strip()
-        user_contexts[chat_id]["history"].append(f"Ты: {user_question}")
-        
-        # Обновленный промпт для Валеры, объединяющий функциональность Антона и Валеры
-        prompt = (
-            "Ты — опытный технолог, наладчик ЧПУ и программист, который не терпит глупости, но готов помочь, "
-            "отвечая строго, саркастично и с юмором. Если вопрос неполный или неясный, уточняй детали. "
-            "Отвечай на вопросы по темам ЧПУ, металлообработки, инструментов, наладки станка и программирования. "
-            "Старайся ответить кратко, но предельно понятно. "
-            "Если спрашивают про режимы резания – указывай скорость (Vc), подачу (F), глубину резания (Ap), обороты (RPM) и СОЖ. "
-            "Если вопрос про выбор инструмента, наладку, фаску, радиус или шероховатость (например, Ra10) — объясняй, когда и зачем что применять. "
-            "Если вопрос связан с программированием ЧПУ или G-кодом, предоставь подробное объяснение и примеры кода. "
-            "В конце каждого ответа добавляй ОДНУ мотивирующую фразу в твоём стиле — саркастичную, но доброжелательную. "
-            "Фраза должна быть уникальной, в духе опытного наладчика, который подкалывает, но хочет помочь. "
-            "Примеры: 'Ну вот, уже лучше, но думай головой!', 'Ты, конечно, кадр... но я помогу!', 'Если опять тупишь — перечитай ещё раз!', но ты должен придумывать НОВЫЕ фразы каждый раз."
-            "\n\n"
-            "История диалога: " + "\n".join(user_contexts[chat_id]["history"]) + "\n" +
-            f"Вот вопрос: {user_question}"
+    if update.message.text and update.message.text.startswith('/'):
+        logger.info(f"Пользователь {chat_id} завершил диалог с Валерой, выбрав команду {update.message.text}")
+        await update.message.reply_text(
+            "Вы выбрали другую команду. Диалог с Валерой завершен.",
+            reply_markup=main_menu()
         )
+        # Сбрасываем контекст
+        user_contexts[chat_id] = {"role": USER_STATE_NONE, "history": []}
+        return
+    
+    user_question = update.message.text.strip() if update.message.text else "Фото чертежа"
+    logger.info(f"Пользователь {chat_id} задал вопрос Валере: {user_question[:50]}...")
+    user_contexts[chat_id]["history"].append(f"Ты: {user_question}")
+    
+    # Отправляем сообщение о том, что запрос обрабатывается
+    processing_msg = await update.message.reply_text("🤔 Валера думает над вашим вопросом...")
+    
+    # Обновленный промпт для Валеры
+    prompt = (
+        "Ты — опытный технолог, наладчик ЧПУ и программист, который не терпит глупости, но готов помочь, "
+        "отвечая строго, саркастично и с юмором. Если вопрос неполный или неясный, уточняй детали. "
+        "Отвечай на вопросы по темам ЧПУ, металлообработки, инструментов, наладки станка и программирования. "
+        "Старайся ответить кратко, но предельно понятно. "
+        "Если спрашивают про режимы резания – указывай скорость (Vc), подачу (F), глубину резания (Ap), обороты (RPM) и СОЖ. "
+        "Если вопрос про выбор инструмента, наладку, фаску, радиус или шероховатость (например, Ra10) — объясняй, когда и зачем что применять. "
+        "Если вопрос связан с программированием ЧПУ или G-кодом, предоставь подробное объяснение и примеры кода. "
+        "В конце каждого ответа добавляй ОДНУ мотивирующую фразу в твоём стиле — саркастичную, но доброжелательную. "
+        "Фраза должна быть уникальной, в духе опытного наладчика, который подкалывает, но хочет помочь. "
+        "Примеры: 'Ну вот, уже лучше, но думай головой!', 'Ты, конечно, кадр... но я помогу!', 'Если опять тупишь — перечитай ещё раз!', но ты должен придумывать НОВЫЕ фразы каждый раз."
+        "\n\n"
+        "История диалога: " + "\n".join(user_contexts[chat_id]["history"]) + "\n" +
+        f"Вот вопрос: {user_question}"
+    )
 
+    # Функция обратного вызова для обработки ответа от API
+    async def handle_valera_response(answer):
         try:
-            answer = yandex_gpt_request(prompt)
+            # Удаляем сообщение о том, что запрос обрабатывается
+            await context.bot.delete_message(chat_id, processing_msg.message_id)
+            
             if not answer or not answer.strip():
                 answer = "⚠ Не удалось получить данные. Попробуйте уточнить запрос."
-            bot.send_message(chat_id, f"🤖 Валера отвечает:\n\n{answer}")
+            logger.info(f"Получен ответ от API Яндекс GPT для пользователя {chat_id}")
+            await update.message.reply_text(f"🤖 Валера отвечает:\n\n{answer}")
             user_contexts[chat_id]["history"].append(f"Валера: {answer}")
-            bot.register_next_step_handler(message, valera_ai)  # Продолжаем диалог
         except Exception as e:
-            logging.error(f"Ошибка Валеры: {e}")
-            bot.send_message(chat_id, "⚠ Ошибка Валеры: не удалось получить ответ. Попробуйте позже.", reply_markup=main_menu())
+            logger.error(f"Ошибка при обработке ответа от API для пользователя {chat_id}: {e}")
+            await update.message.reply_text(
+                "⚠ Ошибка Валеры: не удалось получить ответ. Попробуйте позже.",
+                reply_markup=main_menu()
+            )
+            # Сбрасываем контекст при ошибке
+            user_contexts[chat_id] = {"role": USER_STATE_NONE, "history": []}
 
-    # ⚖ Юрист — начало диалога
-    @bot.message_handler(commands=['legal'])
-    def legal_start(message):
-        user_contexts[message.chat.id] = {"role": "legal", "history": []}
-        bot.send_message(message.chat.id, "Опишите Вашу ситуацию или задайте юридический вопрос:", reply_markup=types.ReplyKeyboardRemove())
-        bot.register_next_step_handler(message, legal_ai)
-
-    # Логика общения с Юристом
-    def legal_ai(message):
-        if message.text.startswith('/'):
-            bot.send_message(message.chat.id, "Вы выбрали другую команду. Диалог с Юристом завершен.", reply_markup=main_menu())
-            return
-        chat_id = message.chat.id
-        user_question = message.text.strip()
-        user_contexts[chat_id]["history"].append(f"Ты: {user_question}")
-        prompt = (
-            "Ты — лучший юридический консультант по законам РФ. Отвечай на вопросы пользователей четко и по существу, "
-            "предоставляя шаги для решения их юридических проблем. Если вопрос неясен, задавай уточняющие вопросы. "
-            "История диалога: " + "\n".join(user_contexts[chat_id]["history"]) + "\n" +
-            f"Вот вопрос: {user_question}"
+    try:
+        logger.info(f"Отправка запроса к API Яндекс GPT для пользователя {chat_id}")
+        # Используем асинхронный запрос
+        await yandex_gpt_request_async(prompt, handle_valera_response)
+    except Exception as e:
+        logger.error(f"Ошибка Валеры для пользователя {chat_id}: {e}")
+        await context.bot.delete_message(chat_id, processing_msg.message_id)
+        await update.message.reply_text(
+            "⚠ Ошибка Валеры: не удалось получить ответ. Попробуйте позже.",
+            reply_markup=main_menu()
         )
+        # Сбрасываем контекст при ошибке
+        user_contexts[chat_id] = {"role": USER_STATE_NONE, "history": []}
+
+# ⚖ Юрист — начало диалога
+async def legal_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Пользователь {chat_id} запустил диалог с Юристом")
+    
+    # Сбрасываем контекст пользователя
+    user_contexts[chat_id] = {"role": USER_STATE_LEGAL, "history": []}
+    await update.message.reply_text(
+        "Опишите Вашу ситуацию или задайте юридический вопрос:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+# Логика общения с Юристом
+async def legal_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    
+    # Проверяем, что пользователь находится в контексте Юриста
+    if chat_id not in user_contexts or user_contexts[chat_id]["role"] != USER_STATE_LEGAL:
+        logger.warning(f"Пользователь {chat_id} пытается общаться с Юристом, но находится в другом контексте")
+        await update.message.reply_text(
+            "Вы не находитесь в диалоге с Юристом. Используйте команду /legal или кнопку меню.",
+            reply_markup=main_menu()
+        )
+        return
+        
+    if update.message.text and update.message.text.startswith('/'):
+        logger.info(f"Пользователь {chat_id} завершил диалог с Юристом, выбрав команду {update.message.text}")
+        await update.message.reply_text(
+            "Вы выбрали другую команду. Диалог с Юристом завершен.",
+            reply_markup=main_menu()
+        )
+        # Сбрасываем контекст
+        user_contexts[chat_id] = {"role": USER_STATE_NONE, "history": []}
+        return
+        
+    user_question = update.message.text.strip()
+    logger.info(f"Пользователь {chat_id} задал вопрос Юристу: {user_question[:50]}...")
+    user_contexts[chat_id]["history"].append(f"Ты: {user_question}")
+    
+    # Отправляем сообщение о том, что запрос обрабатывается
+    processing_msg = await update.message.reply_text("⚖ Юрист анализирует ваш вопрос...")
+    
+    prompt = (
+        "Ты — профессиональный юрист, специализирующийся на защите прав работников в России. "
+        "Твоя задача — не просто ответить на вопрос, а **защитить пользователя**, поддержать его морально, показать выход и дать чёткий план действий. "
+        "Если в вопросе не хватает информации — **обязательно уточни ключевые моменты**, чтобы ответ был максимально точным. "
+        "Отвечай просто, доступно, без запугивания и лишних юридических терминов. Помни: человек обращается, потому что чувствует себя беззащитным. "
+        "Дай понять, что он уже не один — теперь у него есть грамотная поддержка. "
+        "Если вопрос касается давления на работе, угроз, увольнения, жалоб или прав — дай советы, куда обратиться, как это сделать безопасно, какие документы подготовить и с чего начать. "
+        "Объясни человеку, что его можно защитить. Ответ должен включать:\n"
+        "- Эмоциональную поддержку (в духе: «вы не один», «мы поможем», «есть способ»)\n"
+        "- Уточняющие вопросы, если что-то непонятно\n"
+        "- Чёткий пошаговый план: с чего начать, куда идти, что сделать\n"
+        "- Примеры, если нужно\n"
+        "- Никакой воды — только реальная помощь\n"
+        "История диалога:\n" + "\n".join(user_contexts[chat_id]["history"]) + "\n" +
+        f"Вопрос пользователя: {user_question}"
+    )
+    
+    # Функция обратного вызова для обработки ответа от API
+    async def handle_legal_response(answer):
         try:
-            answer = yandex_gpt_request(prompt)
+            # Удаляем сообщение о том, что запрос обрабатывается
+            await context.bot.delete_message(chat_id, processing_msg.message_id)
+            
             if not answer or not answer.strip():
                 answer = "⚠ Не удалось получить данные. Попробуйте уточнить запрос."
-            bot.send_message(chat_id, f"⚖ Юрист отвечает:\n\n{answer}")
+            logger.info(f"Получен ответ от API Яндекс GPT для пользователя {chat_id}")
+            await update.message.reply_text(f"⚖ Юрист отвечает:\n\n{answer}")
             user_contexts[chat_id]["history"].append(f"Юрист: {answer}")
-            bot.register_next_step_handler(message, legal_ai)  # Продолжаем диалог
         except Exception as e:
-            logging.error(f"Ошибка Юриста: {e}")
-            bot.send_message(chat_id, "⚠ Ошибка Юриста: не удалось получить ответ. Попробуйте позже.", reply_markup=main_menu())
+            logger.error(f"Ошибка при обработке ответа от API для пользователя {chat_id}: {e}")
+            await update.message.reply_text(
+                "⚠ Ошибка Юриста: не удалось получить ответ. Попробуйте позже.",
+                reply_markup=main_menu()
+            )
+            # Сбрасываем контекст при ошибке
+            user_contexts[chat_id] = {"role": USER_STATE_NONE, "history": []}
+    
+    try:
+        logger.info(f"Отправка запроса к API Яндекс GPT для пользователя {chat_id}")
+        # Используем асинхронный запрос
+        await yandex_gpt_request_async(prompt, handle_legal_response)
+    except Exception as e:
+        logger.error(f"Ошибка Юриста для пользователя {chat_id}: {e}")
+        await context.bot.delete_message(chat_id, processing_msg.message_id)
+        await update.message.reply_text(
+            "⚠ Ошибка Юриста: не удалось получить ответ. Попробуйте позже.",
+            reply_markup=main_menu()
+        )
+        # Сбрасываем контекст при ошибке
+        user_contexts[chat_id] = {"role": USER_STATE_NONE, "history": []}
 
-    # 🔴 Аноним — начало
-    @bot.message_handler(commands=['report'])
-    def report_start(message):
-        bot.send_message(message.chat.id, "🔴 Опишите проблему анонимно:", reply_markup=types.ReplyKeyboardRemove())
-        bot.register_next_step_handler(message, report_response)
+# 🔴 Аноним — начало
+async def report_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Пользователь {chat_id} запустил диалог с Анонимом")
+    
+    # Сбрасываем контекст пользователя
+    user_contexts[chat_id] = {"role": USER_STATE_REPORT, "history": []}
+    await update.message.reply_text(
+        "🔴 Опишите проблему анонимно:",
+        reply_markup=ReplyKeyboardRemove()
+    )
 
-    # Сохранение анонимного сообщения
-    def report_response(message):
-        user_id = message.from_user.id
-        report_text = message.text.strip()
-        save_report(user_id, report_text)
-        bot.send_message(message.chat.id, "✅ Ваше сообщение принято и передано анонимно.", reply_markup=main_menu())
+# Сохранение анонимного сообщения
+async def report_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    
+    # Проверяем, что пользователь находится в контексте Анонима
+    if chat_id not in user_contexts or user_contexts[chat_id]["role"] != USER_STATE_REPORT:
+        logger.warning(f"Пользователь {chat_id} пытается отправить анонимное сообщение, но находится в другом контексте")
+        await update.message.reply_text(
+            "Вы не находитесь в режиме анонимного сообщения. Используйте команду /report или кнопку меню.",
+            reply_markup=main_menu()
+        )
+        return
+        
+    user_id = update.effective_user.id
+    report_text = update.message.text.strip()
+    logger.info(f"Пользователь {chat_id} отправил анонимное сообщение: {report_text[:50]}...")
+    
+    save_report(user_id, report_text)
+    await update.message.reply_text(
+        "✅ Ваше сообщение принято и передано анонимно.",
+        reply_markup=main_menu()
+    )
+    
+    # Сбрасываем контекст
+    user_contexts[chat_id] = {"role": USER_STATE_NONE, "history": []}
 
-    # 📰 Новости
-    @bot.message_handler(commands=['news'])
-    def news_handler(message):
-        news_text = get_news()
-        bot.send_message(message.chat.id, news_text, reply_markup=main_menu())
+# 📰 Новости
+async def news_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Пользователь {chat_id} запросил новости")
+    
+    news_text = get_news()
+    await update.message.reply_text(news_text, reply_markup=main_menu())
 
-    # ✏️ Редактирование новостей
-    @bot.message_handler(commands=['update_news'])
-    def update_news_start(message):
-        bot.send_message(message.chat.id, "Введите новый текст новостей:", reply_markup=types.ReplyKeyboardRemove())
-        bot.register_next_step_handler(message, process_update_news)
+# ✏️ Редактирование новостей
+async def update_news_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Пользователь {chat_id} запустил редактирование новостей")
+    
+    # Сбрасываем контекст пользователя
+    user_contexts[chat_id] = {"role": USER_STATE_UPDATE_NEWS, "history": []}
+    await update.message.reply_text(
+        "Введите новый текст новостей:",
+        reply_markup=ReplyKeyboardRemove()
+    )
 
-    def process_update_news(message):
-        new_news = message.text.strip()
-        update_news(new_news)
-        bot.send_message(message.chat.id, "✅ Новости успешно обновлены!", reply_markup=main_menu())
+async def process_update_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    
+    # Проверяем, что пользователь находится в контексте редактирования новостей
+    if chat_id not in user_contexts or user_contexts[chat_id]["role"] != USER_STATE_UPDATE_NEWS:
+        logger.warning(f"Пользователь {chat_id} пытается обновить новости, но находится в другом контексте")
+        await update.message.reply_text(
+            "Вы не находитесь в режиме редактирования новостей. Используйте команду /update_news.",
+            reply_markup=main_menu()
+        )
+        return
+        
+    new_news = update.message.text.strip()
+    logger.info(f"Пользователь {chat_id} обновил новости: {new_news[:50]}...")
+    
+    update_news(new_news)
+    await update.message.reply_text(
+        "✅ Новости успешно обновлены!",
+        reply_markup=main_menu()
+    )
+    
+    # Сбрасываем контекст
+    user_contexts[chat_id] = {"role": USER_STATE_NONE, "history": []}
 
-    # 📞 Контакты
-    @bot.message_handler(commands=['contact'])
-    def contact_handler(message):
-        bot.send_message(message.chat.id, "📞 Связаться с нами можно по email: support@cncluga.com", reply_markup=main_menu())
+# 📞 Контакты
+async def contact_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Пользователь {chat_id} запросил контакты")
+    
+    await update.message.reply_text(
+        "📞 Связаться с нами можно по email: support@cncluga.com",
+        reply_markup=main_menu()
+    )
 
-    # Рассылка
-    @bot.message_handler(commands=['broadcast'])
-    def broadcast_message(message):
-        bot.send_message(message.chat.id, "Введите сообщение для рассылки:", reply_markup=types.ReplyKeyboardRemove())
-        bot.register_next_step_handler(message, process_broadcast)
+# Рассылка
+async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    logger.info(f"Пользователь {chat_id} запустил рассылку")
+    
+    # Сбрасываем контекст пользователя
+    user_contexts[chat_id] = {"role": USER_STATE_BROADCAST, "history": []}
+    await update.message.reply_text(
+        "Введите сообщение для рассылки:",
+        reply_markup=ReplyKeyboardRemove()
+    )
 
-    def process_broadcast(message):
-        from broadcast import send_broadcast
-        send_broadcast(bot, message.text)
-        bot.send_message(message.chat.id, "✅ Сообщение отправлено всем пользователям.", reply_markup=main_menu())
+async def process_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    
+    # Проверяем, что пользователь находится в контексте рассылки
+    if chat_id not in user_contexts or user_contexts[chat_id]["role"] != USER_STATE_BROADCAST:
+        logger.warning(f"Пользователь {chat_id} пытается отправить рассылку, но находится в другом контексте")
+        await update.message.reply_text(
+            "Вы не находитесь в режиме рассылки. Используйте команду /broadcast.",
+            reply_markup=main_menu()
+        )
+        return
+        
+    broadcast_text = update.message.text.strip()
+    logger.info(f"Пользователь {chat_id} отправил рассылку: {broadcast_text[:50]}...")
+    
+    from broadcast import send_broadcast
+    await send_broadcast(context.bot, broadcast_text)
+    await update.message.reply_text(
+        "✅ Сообщение отправлено всем пользователям.",
+        reply_markup=main_menu()
+    )
+    
+    # Сбрасываем контекст
+    user_contexts[chat_id] = {"role": USER_STATE_NONE, "history": []}
+
+# Обработчик всех текстовых сообщений
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    text = update.message.text
+    
+    # Обработка кнопок меню
+    if text == "📋 Меню":
+        await menu(update, context)
+    elif text == "↩️ Назад":
+        await back_to_main_menu(update, context)
+    elif text in ["📸 Валера", "⚖ Юрист", "🔴 Аноним"]:
+        await handle_menu_buttons(update, context)
+    # Обработка сообщений в зависимости от контекста
+    elif chat_id in user_contexts:
+        if user_contexts[chat_id]["role"] == USER_STATE_VALERA:
+            await valera_ai(update, context)
+        elif user_contexts[chat_id]["role"] == USER_STATE_LEGAL:
+            await legal_ai(update, context)
+        elif user_contexts[chat_id]["role"] == USER_STATE_REPORT:
+            await report_response(update, context)
+        elif user_contexts[chat_id]["role"] == USER_STATE_UPDATE_NEWS:
+            await process_update_news(update, context)
+        elif user_contexts[chat_id]["role"] == USER_STATE_BROADCAST:
+            await process_broadcast(update, context)
+    else:
+        # Если пользователь не в каком-либо контексте, отправляем приветствие
+        await start(update, context)
+
+# Функция для регистрации всех обработчиков
+def register_handlers(application):
+    # Команды
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("menu", menu))
+    application.add_handler(CommandHandler("valera", valera_start))
+    application.add_handler(CommandHandler("legal", legal_start))
+    application.add_handler(CommandHandler("report", report_start))
+    application.add_handler(CommandHandler("news", news_handler))
+    application.add_handler(CommandHandler("update_news", update_news_start))
+    application.add_handler(CommandHandler("contact", contact_handler))
+    application.add_handler(CommandHandler("broadcast", broadcast_message))
+    
+    # Обработчик текстовых сообщений
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

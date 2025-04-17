@@ -1,47 +1,97 @@
 import logging
-import requests
-import os  # Добавляем модуль os
-from dotenv import load_dotenv  # Добавляем импорт
+import os
+import aiohttp
+import asyncio
+from dotenv import load_dotenv
 
-# Загружаем переменные из .env
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Загрузка переменных окружения
 load_dotenv()
-# Получаем ключи из переменных окружения
+
+# Получение ключей из переменных окружения
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
-FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
+YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
 
 # Проверяем, что ключи загружены
-if not YANDEX_API_KEY or not FOLDER_ID:
-    logging.error("❌ Ошибка: Не удалось загрузить YANDEX_API_KEY или YANDEX_FOLDER_ID из переменных окружения")
+if not YANDEX_API_KEY or not YANDEX_FOLDER_ID:
+    logger.error("❌ Ошибка: Не удалось загрузить YANDEX_API_KEY или YANDEX_FOLDER_ID из переменных окружения")
     raise ValueError("❌ Ошибка: Не удалось загрузить YANDEX_API_KEY или YANDEX_FOLDER_ID из переменных окружения")
 
-# Отправляем запрос к YandexGPT и получаем ответ
-def yandex_gpt_request(prompt):
-    url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+# URL для запросов к API Яндекс GPT
+YANDEX_GPT_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+
+async def yandex_gpt_request(prompt):
+    """
+    Асинхронная функция для отправки запроса к API Яндекс GPT.
+    
+    Args:
+        prompt (str): Текст запроса для отправки в API
+        
+    Returns:
+        str: Ответ от API или сообщение об ошибке
+    """
+    logger.info(f"Отправка запроса к API Яндекс GPT, длина промпта: {len(prompt)} символов")
+    
     headers = {
         "Authorization": f"Api-Key {YANDEX_API_KEY}",
         "Content-Type": "application/json"
     }
+    
     data = {
-        "modelUri": f"gpt://{FOLDER_ID}/yandexgpt",
-        "completionOptions": {"stream": False, "temperature": 0.8, "maxTokens": 1000},
-        "messages": [{"role": "user", "text": prompt}]
+        "modelUri": f"gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite",
+        "completionOptions": {
+            "stream": False,
+            "temperature": 0.6,
+            "maxTokens": "2000"
+        },
+        "messages": [
+            {
+                "role": "user",
+                "text": prompt
+            }
+        ]
     }
-
+    
     try:
-        response = requests.post(url, json=data, headers=headers, timeout=30)  # Добавляем таймаут 30 секунд
-        response.raise_for_status()  # Проверяем, что запрос успешен
-        response_json = response.json()
-        if "result" in response_json and "alternatives" in response_json["result"]:
-            return response_json["result"]["alternatives"][0]["message"]["text"]
-        else:
-            logging.error(f"Некорректный ответ от API: {response_json}")
-            return "Ошибка обработки запроса. Проверь настройки API."
-    except requests.Timeout:
-        logging.error("Таймаут при запросе к YandexGPT API")
+        async with aiohttp.ClientSession() as session:
+            async with session.post(YANDEX_GPT_URL, json=data, headers=headers, timeout=30) as response:
+                if response.status == 200:
+                    response_json = await response.json()
+                    if "result" in response_json and "alternatives" in response_json["result"]:
+                        answer = response_json["result"]["alternatives"][0]["text"]
+                        logger.info(f"Получен ответ от API Яндекс GPT, длина ответа: {len(answer)} символов")
+                        return answer
+                    else:
+                        logger.error(f"Некорректный ответ от API: {response_json}")
+                        return "Ошибка обработки запроса. Проверь настройки API."
+                else:
+                    error_text = await response.text()
+                    logger.error(f"Ошибка при запросе к API Яндекс GPT: {response.status} - {error_text}")
+                    return f"Ошибка при запросе к API: {response.status}"
+    except asyncio.TimeoutError:
+        logger.error("Таймаут при запросе к API Яндекс GPT")
         return "Ошибка: запрос к API занял слишком много времени."
-    except requests.RequestException as e:
-        logging.error(f"Ошибка при запросе к YandexGPT API: {e}")
-        return "Ошибка при выполнении запроса к API."
     except Exception as e:
-        logging.error(f"Ошибка обработки JSON: {e}")
-        return "Ошибка при разборе ответа от API."
+        logger.error(f"Ошибка при запросе к API Яндекс GPT: {e}")
+        return f"Ошибка при выполнении запроса к API: {str(e)}"
+
+async def yandex_gpt_request_async(prompt, callback):
+    """
+    Асинхронная функция для отправки запроса к API Яндекс GPT с callback.
+    
+    Args:
+        prompt (str): Текст запроса для отправки в API
+        callback (function): Функция обратного вызова, которая будет вызвана с результатом
+    """
+    try:
+        result = await yandex_gpt_request(prompt)
+        await callback(result)
+    except Exception as e:
+        logger.error(f"Ошибка в асинхронном запросе к API Яндекс GPT: {e}")
+        await callback(None)

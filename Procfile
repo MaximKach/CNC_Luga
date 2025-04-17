@@ -1,1 +1,1 @@
-web: gunicorn --bind 0.0.0.0:8000 cnc_luga_bot:app
+web: gunicorn --bind 0.0.0.0:8000 --worker-class aiohttp.worker.GunicornWebWorker cnc_luga_bot:app
