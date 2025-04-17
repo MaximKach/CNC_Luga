@@ -1,6 +1,8 @@
 import logging
 import telebot
 import os
+import sys
+import traceback
 from handlers import register_handlers
 from flask import Flask, request
 
@@ -31,6 +33,13 @@ register_handlers(bot)
 # Создаём Flask-приложение
 app = Flask(__name__)
 
+# Обработчик необработанных исключений
+@app.errorhandler(Exception)
+def handle_exception(e):
+    logging.error(f"Необработанное исключение: {e}")
+    logging.error(traceback.format_exc())
+    return "Internal Server Error", 500
+
 # Health check для Koyeb
 @app.route('/')
 def health_check():
@@ -42,12 +51,17 @@ def health_check():
 def webhook():
     logging.info("Получен webhook-запрос от Telegram")
     if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        logging.info(f"Получены данные: {json_string}")
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        logging.info("Обновления обработаны")
-        return 'OK', 200
+        try:
+            json_string = request.get_data().decode('utf-8')
+            logging.info(f"Получены данные: {json_string[:100]}...")  # Логируем только начало JSON
+            update = telebot.types.Update.de_json(json_string)
+            bot.process_new_updates([update])
+            logging.info("Обновления обработаны")
+            return 'OK', 200
+        except Exception as e:
+            logging.error(f"Ошибка при обработке webhook: {e}")
+            logging.error(traceback.format_exc())
+            return 'Internal Server Error', 500
     else:
         logging.warning("Неправильный тип контента")
         return 'Bad Request', 400
@@ -57,15 +71,25 @@ def webhook():
 def set_webhook():
     webhook_url = f"https://ideological-jerrie-ka4-d4b11a76.koyeb.app/{TOKEN}"
     logging.info(f"Установка webhook на {webhook_url}")
-    bot.remove_webhook()
-    success = bot.set_webhook(url=webhook_url)
-    if success:
-        logging.info("Webhook успешно установлен")
-        return f"Webhook set to {webhook_url}", 200
-    else:
-        logging.error("Не удалось установить webhook")
-        return "Failed to set webhook", 500
+    try:
+        bot.remove_webhook()
+        success = bot.set_webhook(url=webhook_url)
+        if success:
+            logging.info("Webhook успешно установлен")
+            return f"Webhook set to {webhook_url}", 200
+        else:
+            logging.error("Не удалось установить webhook")
+            return "Failed to set webhook", 500
+    except Exception as e:
+        logging.error(f"Ошибка при установке webhook: {e}")
+        logging.error(traceback.format_exc())
+        return "Internal Server Error", 500
 
 if __name__ == "__main__":
     logging.info("Бот запущен...")
-    app.run(host='0.0.0.0', port=8000)
+    try:
+        app.run(host='0.0.0.0', port=8000)
+    except Exception as e:
+        logging.error(f"Ошибка при запуске бота: {e}")
+        logging.error(traceback.format_exc())
+        sys.exit(1)
