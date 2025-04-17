@@ -38,3 +38,7 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+bot.log
+ngrok-v3-stable-linux-amd64.tgz
+nohup.out
+of -i :8000

@@ -1,7 +1,10 @@
 import logging
 import requests
 import os  # Добавляем модуль os
+from dotenv import load_dotenv  # Добавляем импорт
 
+# Загружаем переменные из .env
+load_dotenv()
 # Получаем ключи из переменных окружения
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
