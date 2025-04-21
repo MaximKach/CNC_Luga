@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 from gpt_api import yandex_gpt_request, yandex_gpt_request_async
 from news import get_news, update_news
 from reports import save_report
-from users import save_user
+from users import add_user
 import traceback
 
 # Настройка логирования
@@ -49,7 +49,7 @@ def commands_menu():
 
 # Обработчик команды /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    save_user(update.effective_chat.id)
+    await add_user(update.effective_chat.id)
     # Сбрасываем контекст пользователя при старте
     user_contexts[update.effective_chat.id] = {"role": USER_STATE_NONE, "history": []}
     logger.info(f"Пользователь {update.effective_chat.id} запустил бота")
