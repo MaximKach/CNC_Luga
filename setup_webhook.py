@@ -41,7 +41,7 @@ def setup_webhook(domain):
     Returns:
         bool: True, если webhook успешно настроен, иначе False
     """
-    webhook_url = f"https://{domain}/{TOKEN}"
+    webhook_url = f"https://{domain}/webhook"
     api_url = f"https://api.telegram.org/bot{TOKEN}/setWebhook"
     
     try:

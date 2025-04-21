@@ -1,13 +1,18 @@
 import logging
 import os
 import json
+import traceback
 from typing import List, Dict, Optional
 from datetime import datetime
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG,  # Изменяем уровень на DEBUG для более подробных логов
+    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
+    handlers=[
+        logging.FileHandler("users.log", encoding='utf-8'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -21,13 +26,17 @@ def load_users() -> Dict:
         Dict: Словарь с данными пользователей
     """
     if not os.path.exists(USERS_FILE):
+        logger.debug(f"Файл {USERS_FILE} не существует, возвращаем пустой словарь")
         return {}
     
     try:
         with open(USERS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            users = json.load(f)
+            logger.debug(f"Загружено {len(users)} пользователей из файла")
+            return users
     except Exception as e:
         logger.error(f"Ошибка при загрузке пользователей: {e}")
+        logger.error(traceback.format_exc())
         return {}
 
 def save_users(users: Dict) -> None:
@@ -40,8 +49,10 @@ def save_users(users: Dict) -> None:
     try:
         with open(USERS_FILE, 'w', encoding='utf-8') as f:
             json.dump(users, f, ensure_ascii=False, indent=4)
+            logger.debug(f"Сохранено {len(users)} пользователей в файл")
     except Exception as e:
         logger.error(f"Ошибка при сохранении пользователей: {e}")
+        logger.error(traceback.format_exc())
 
 def get_users() -> List[int]:
     """

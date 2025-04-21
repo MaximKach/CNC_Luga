@@ -5,11 +5,16 @@ from gpt_api import yandex_gpt_request, yandex_gpt_request_async
 from news import get_news, update_news
 from reports import save_report
 from users import save_user
+import traceback
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG,  # Изменяем уровень на DEBUG для более подробных логов
+    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
+    handlers=[
+        logging.FileHandler("handlers.log", encoding='utf-8'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -454,18 +459,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
 
 # Функция для регистрации всех обработчиков
-def register_handlers(application):
+def register_handlers(app_bot):
     # Команды
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("menu", menu))
-    application.add_handler(CommandHandler("valera", valera_start))
-    application.add_handler(CommandHandler("legal", legal_start))
-    application.add_handler(CommandHandler("report", report_start))
-    application.add_handler(CommandHandler("news", news_handler))
-    application.add_handler(CommandHandler("update_news", update_news_start))
-    application.add_handler(CommandHandler("contact", contact_handler))
-    application.add_handler(CommandHandler("broadcast", broadcast_message))
+    app_bot.add_handler(CommandHandler("start", start))
+    app_bot.add_handler(CommandHandler("help", help_command))
+    app_bot.add_handler(CommandHandler("menu", menu))
+    app_bot.add_handler(CommandHandler("valera", valera_start))
+    app_bot.add_handler(CommandHandler("legal", legal_start))
+    app_bot.add_handler(CommandHandler("report", report_start))
+    app_bot.add_handler(CommandHandler("news", news_handler))
+    app_bot.add_handler(CommandHandler("update_news", update_news_start))
+    app_bot.add_handler(CommandHandler("contact", contact_handler))
+    app_bot.add_handler(CommandHandler("broadcast", broadcast_message))
+    
+    # Обработчик кнопки "Назад"
+    app_bot.add_handler(MessageHandler(filters.Regex("^↩️ Назад$"), back_to_main_menu))
     
     # Обработчик текстовых сообщений
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
