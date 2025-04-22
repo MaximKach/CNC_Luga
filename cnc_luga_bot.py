@@ -81,7 +81,7 @@ def health():
         init_bot()
     return "Bot is running"
 
-# Health check для Koyeb
+# Health check для проверки работоспособности
 @app.route('/')
 async def health_check():
     logger.info("Получен запрос на проверку работоспособности")
@@ -89,8 +89,8 @@ async def health_check():
         init_bot()
     return "OK"
 
-# Webhook-эндпоинт для Telegram
-@app.route('/webhook', methods=['POST'])
+# Webhook-эндпоинт для Telegram с токеном бота в URL
+@app.route('/8161940788:AAE2l_4-4ZEovz2ukD4NF1IeAmHe_9emUiQ', methods=['POST'])
 async def webhook():
     logger.info("Получен webhook запрос")
     if request.method == "POST":
@@ -111,10 +111,7 @@ async def set_webhook():
     try:
         if app_bot is None:
             init_bot()
-        webhook_url = request.args.get('url')
-        if not webhook_url:
-            return "URL не указан", 400
-        
+        webhook_url = "https://755d-109-172-30-15.ngrok-free.app/8161940788:AAE2l_4-4ZEovz2ukD4NF1IeAmHe_9emUiQ"
         await app_bot.bot.set_webhook(url=webhook_url)
         logger.info(f"Webhook успешно установлен на {webhook_url}")
         return "Webhook установлен"
