@@ -1,6 +1,6 @@
 import logging
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
+from telegram.ext import ContextTypes
 from gpt_api import yandex_gpt_request, yandex_gpt_request_async
 from news import get_news, update_news
 from reports import save_report
@@ -346,4 +346,4 @@ def register_handlers(app_bot):
     app_bot.add_handler(MessageHandler(filters.Regex("^↩️ Назад$"), back_to_main_menu))
     
     # Обработчик текстовых сообщений
-    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)) 

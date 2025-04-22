@@ -1,6 +1,6 @@
 import logging
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
+from telegram.ext import ContextTypes
 from gpt_api import yandex_gpt_request, yandex_gpt_request_async
 from news import get_news, update_news
 from reports import save_report
