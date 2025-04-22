@@ -62,9 +62,9 @@ async def init_bot():
     logger.info("Бот успешно инициализирован")
 
 # Инициализируем бота при запуске Flask-приложения
-@app.before_first_request
-async def before_first_request():
-    await init_bot()
+with app.app_context():
+    import asyncio
+    asyncio.run(init_bot())
 
 # Эндпоинт для инициализации бота
 @app.route('/init', methods=['GET'])
@@ -112,10 +112,6 @@ async def set_webhook():
 if __name__ == "__main__":
     logger.info("Бот запущен...")
     try:
-        # Инициализируем бота перед запуском Flask
-        import asyncio
-        asyncio.run(init_bot())
-        
         # Запускаем Flask
         app.run(host='0.0.0.0', port=8000)
     except Exception as e:
