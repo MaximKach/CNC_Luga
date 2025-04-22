@@ -6,7 +6,6 @@ from news import get_news, update_news
 from reports import save_report
 from users import add_user
 import traceback
-import openai
 
 # Настройка логирования
 logging.basicConfig(
@@ -157,17 +156,15 @@ async def valera_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Отвечай кратко, по существу, с юмором и всегда готов помочь — будь то вопрос по наладке станка или по трудовому праву."""
 
-    messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(user_contexts[user_id]["history"])
+    # Формируем промпт для Яндекс GPT
+    prompt = f"{system_prompt}\n\n"
+    for msg in user_contexts[user_id]["history"]:
+        role = "Пользователь" if msg["role"] == "user" else "Валера"
+        prompt += f"{role}: {msg['content']}\n"
     
     try:
-        response = await openai.ChatCompletion.acreate(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=1000
-        )
-        bot_response = response.choices[0].message.content
+        # Используем Яндекс GPT
+        bot_response = await yandex_gpt_request(prompt)
         user_contexts[user_id]["history"].append({"role": "assistant", "content": bot_response})
         await update.message.reply_text(bot_response)
     except Exception as e:
