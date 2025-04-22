@@ -34,7 +34,7 @@ if not TELEGRAM_TOKEN:
 app = Flask(__name__)
 
 # Создание приложения Telegram
-app_bot = None
+application = None
 
 # Обработчик ошибок
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -46,47 +46,52 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
 
 # Подключаем все обработчики из handlers.py
-def init_bot():
-    global app_bot
-    if app_bot is not None:
+async def init_bot():
+    global application
+    if application is not None:
         return
     
-    app_bot = Application.builder().token(TELEGRAM_TOKEN).build()
-    register_handlers(app_bot)
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    register_handlers(application)
     
     # Регистрация обработчиков
     from handlers import start, help_command, menu, handle_message
-    app_bot.add_handler(CommandHandler("start", start))
-    app_bot.add_handler(CommandHandler("help", help_command))
-    app_bot.add_handler(CommandHandler("menu", menu))
-    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("menu", menu))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # Обработчик ошибок
-    app_bot.add_error_handler(error_handler)
+    application.add_error_handler(error_handler)
+    
+    # Инициализация и запуск приложения
+    await application.initialize()
+    await application.start()
 
 # Инициализируем бота при запуске Flask-приложения
-with app.app_context():
-    init_bot()
+@app.before_first_request
+async def before_first_request():
+    await init_bot()
 
 # Эндпоинт для инициализации бота
 @app.route('/init', methods=['GET'])
-def init():
-    init_bot()
+async def init():
+    await init_bot()
     return "Bot initialized"
 
 # Эндпоинт для проверки состояния бота
 @app.route('/health', methods=['GET'])
-def health():
-    if app_bot is None:
-        init_bot()
+async def health():
+    if application is None:
+        await init_bot()
     return "Bot is running"
 
 # Health check для проверки работоспособности
 @app.route('/')
 async def health_check():
     logger.info("Получен запрос на проверку работоспособности")
-    if app_bot is None:
-        init_bot()
+    if application is None:
+        await init_bot()
     return "OK"
 
 # Webhook-эндпоинт для Telegram с токеном бота в URL
@@ -95,10 +100,10 @@ async def webhook():
     logger.info("Получен webhook запрос")
     if request.method == "POST":
         try:
-            if app_bot is None:
-                init_bot()
-            update = Update.de_json(request.get_json(), app_bot.bot)
-            await app_bot.process_update(update)
+            if application is None:
+                await init_bot()
+            update = Update.de_json(request.get_json(), application.bot)
+            await application.process_update(update)
             return jsonify({"status": "ok"})
         except Exception as e:
             logger.error(f"Ошибка при обработке webhook: {e}")
@@ -109,10 +114,10 @@ async def webhook():
 @app.route('/set_webhook', methods=['GET'])
 async def set_webhook():
     try:
-        if app_bot is None:
-            init_bot()
+        if application is None:
+            await init_bot()
         webhook_url = "https://755d-109-172-30-15.ngrok-free.app/8161940788:AAE2l_4-4ZEovz2ukD4NF1IeAmHe_9emUiQ"
-        await app_bot.bot.set_webhook(url=webhook_url)
+        await application.bot.set_webhook(url=webhook_url)
         logger.info(f"Webhook успешно установлен на {webhook_url}")
         return "Webhook установлен"
     except Exception as e:
@@ -122,7 +127,6 @@ async def set_webhook():
 if __name__ == "__main__":
     logger.info("Бот запущен...")
     try:
-        init_bot()
         app.run(host='0.0.0.0', port=8000)
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
